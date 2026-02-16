@@ -2,8 +2,10 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const { execSync } = require('child_process');
 
 const PORT = process.env.PORT || 3000;
+const DB_PATH = process.env.HOME + '/zenith.db';
 const MIME = {
   '.html': 'text/html',
   '.json': 'application/json',
@@ -12,6 +14,33 @@ const MIME = {
 };
 
 const server = http.createServer((req, res) => {
+  // API: backup history from local SQLite
+  if (req.url === '/api/backups') {
+    try {
+      const raw = execSync('sqlite3 -json "' + DB_PATH + '" "SELECT * FROM backups ORDER BY id DESC LIMIT 50;"', { timeout: 3000 });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(raw.toString());
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('[]');
+    }
+    return;
+  }
+
+  // API: current config
+  if (req.url === '/api/config') {
+    try {
+      const raw = execSync('sqlite3 -json "' + DB_PATH + '" "SELECT * FROM config ORDER BY id DESC LIMIT 1;"', { timeout: 3000 });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(raw.toString());
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('[]');
+    }
+    return;
+  }
+
+  // Static files
   let filePath = req.url === '/' ? '/index.html' : req.url;
   filePath = path.join(__dirname, filePath);
   const ext = path.extname(filePath);
@@ -74,13 +103,12 @@ wss.on('connection', (ws) => {
     });
   });
 
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
+  ws.on('close', () => console.log('Client disconnected'));
 });
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('SovereignNexus running on http://0.0.0.0:' + PORT);
   console.log('WebSocket: ws://0.0.0.0:' + PORT + '/chat');
+  console.log('API: /api/backups, /api/config');
   console.log('Voice I/O: enabled | TTS: browser-side via speak flag');
 });
