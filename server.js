@@ -33,31 +33,61 @@ const wss = new WebSocketServer({ server, path: '/chat' });
 wss.on('connection', (ws) => {
   console.log('Client connected to /chat');
 
-  ws.on('message', (message) => {
-    const text = message.toString();
-    console.log('Received:', text);
-    // Echo back with Nexus prefix
-    ws.send(JSON.stringify({
-      from: 'Nexus',
-      message: text,
-      timestamp: new Date().toISOString()
-    }));
+  ws.on('message', (raw) => {
+    let type = 'text';
+    let content = '';
+
+    try {
+      const parsed = JSON.parse(raw.toString());
+      type = parsed.type || 'text';
+      content = parsed.content || raw.toString();
+    } catch (e) {
+      content = raw.toString();
+    }
+
+    console.log('[' + type + '] Received:', content);
+
+    // Build response
+    let reply;
+    if (type === 'voice') {
+      reply = {
+        from: 'Nexus',
+        type: 'voice_response',
+        message: 'Voice received: ' + content,
+        original_input: content,
+        timestamp: new Date().toISOString()
+      };
+    } else {
+      reply = {
+        from: 'Nexus',
+        type: 'text_response',
+        message: content,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    ws.send(JSON.stringify(reply));
+
+    // Broadcast to all connected clients
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === 1) {
+        client.send(JSON.stringify({
+          from: 'Nexus',
+          type: 'broadcast',
+          message: '[' + type + '] ' + content,
+          timestamp: new Date().toISOString()
+        }));
+      }
+    });
   });
 
   ws.on('close', () => {
-    console.log('Client disconnected from /chat');
+    console.log('Client disconnected');
   });
-
-  // Welcome message
-  ws.send(JSON.stringify({
-    from: 'Nexus',
-    message: 'Connected to SovereignNexus chat. AGI 60%.',
-    timestamp: new Date().toISOString()
-  }));
 });
 
-server.listen(PORT, () => {
-  console.log('SovereignNexus running on port ' + PORT);
-  console.log('HTTP: http://localhost:' + PORT);
-  console.log('WebSocket: ws://localhost:' + PORT + '/chat');
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('SovereignNexus running on http://0.0.0.0:' + PORT);
+  console.log('WebSocket chat: ws://0.0.0.0:' + PORT + '/chat');
+  console.log('Voice input: enabled');
 });
