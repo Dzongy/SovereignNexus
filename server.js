@@ -11,7 +11,6 @@ const MIME = {
   '.css': 'text/css'
 };
 
-// HTTP server: serves static files
 const server = http.createServer((req, res) => {
   let filePath = req.url === '/' ? '/index.html' : req.url;
   filePath = path.join(__dirname, filePath);
@@ -27,7 +26,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// WebSocket server on /chat path
 const wss = new WebSocketServer({ server, path: '/chat' });
 
 wss.on('connection', (ws) => {
@@ -47,34 +45,29 @@ wss.on('connection', (ws) => {
 
     console.log('[' + type + '] Received:', content);
 
-    // Build response
-    let reply;
-    if (type === 'voice') {
-      reply = {
-        from: 'Nexus',
-        type: 'voice_response',
-        message: 'Voice received: ' + content,
-        original_input: content,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      reply = {
-        from: 'Nexus',
-        type: 'text_response',
-        message: content,
-        timestamp: new Date().toISOString()
-      };
-    }
+    // Build response with speak flag for browser TTS
+    const replyText = type === 'voice'
+      ? 'Nexus: Voice received. ' + content
+      : 'Nexus: ' + content;
+
+    const reply = {
+      from: 'Nexus',
+      type: type === 'voice' ? 'voice_response' : 'text_response',
+      message: replyText,
+      speak: true,
+      timestamp: new Date().toISOString()
+    };
 
     ws.send(JSON.stringify(reply));
 
-    // Broadcast to all connected clients
+    // Broadcast to other clients
     wss.clients.forEach((client) => {
       if (client !== ws && client.readyState === 1) {
         client.send(JSON.stringify({
           from: 'Nexus',
           type: 'broadcast',
           message: '[' + type + '] ' + content,
+          speak: false,
           timestamp: new Date().toISOString()
         }));
       }
@@ -88,6 +81,6 @@ wss.on('connection', (ws) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('SovereignNexus running on http://0.0.0.0:' + PORT);
-  console.log('WebSocket chat: ws://0.0.0.0:' + PORT + '/chat');
-  console.log('Voice input: enabled');
+  console.log('WebSocket: ws://0.0.0.0:' + PORT + '/chat');
+  console.log('Voice I/O: enabled | TTS: browser-side via speak flag');
 });
